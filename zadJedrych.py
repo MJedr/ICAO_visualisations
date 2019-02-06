@@ -27,7 +27,7 @@ list_ = []
 
 for file_ in allFiles:
     df = pd.read_csv(file_, sep='\t')
-    df['year'] = (int(re.findall("[.0-9][.0-9][.0-9][.0-9]", file_)[0]))  # MD: po co "."? Można prościej!
+    df['year'] = (int(f.split('_')[-1][:-4]))  # bierzemy ostatni element nazwy i pozbawiamy go z rozszerzenia
     list_.append(df)
 
 frame = pd.concat(list_, axis=0, ignore_index=True)
@@ -73,49 +73,49 @@ def calculate_distance(latt1, long1, latt2, long2):
     return R * c
 
 
-def plot_country(county_code,
-                 option={'airport', 'traffic'},  # MD: 1) co to miałoby osiągnąć? 2) nie używamy mutowalnych obiektów jako domyślnych argumentów: https://docs.python-guide.org/writing/gotchas/
-                 plot_name='traffic_plot.png'):
+def plot_country(county_code, option, plot_name='traffic_plot.png'):
     if option == 'airport':
-        # MD: tego typu komentarze można starać się zastąpić odpowidnio nazwanymi zmiennymi np. arrivals_df itp.
-        # MD: więcej o pisaniu dobrych komentarzy np:
-        # MD: https://medium.freecodecamp.org/code-comments-the-good-the-bad-and-the-ugly-be9cc65fbf83
-        # MD: https://blog.codinghorror.com/code-tells-you-how-comments-tell-you-why/
-        # pomocnicza ramka dancyh z lotniskami w wybranym kraju - przyloty
-        f1 = frame[(frame.iso_code_dep == county_code) & (frame.iso_code_arr == county_code)][
+        arrivals_df = frame[(frame.iso_code_dep == county_code) & (frame.iso_code_arr == county_code)][
             ['passengers', 'airport_arr', 'year']]
-        # pomocnicza ramka dancyh z lotniskami w wybranym kraju - odloty
-        f2 = frame[(frame.iso_code_dep == county_code) & (frame.iso_code_arr == county_code)][
+        departures_df = frame[(frame.iso_code_dep == county_code) & (frame.iso_code_arr == county_code)][
             ['passengers', 'airport_dep', 'year']]
         # zmiana nazwy kolumny - zapobieganie duplikowaniu kolumny
-        f2 = f2.rename(columns={'passengers': 'pessangers_dep'})
+        departures_df = departures_df.rename(columns={'passengers': 'pessangers_dep'})
 
-        # połączenie obydwu ramek danych na podstawie lotniska i roku
-        new_df = pd.merge(f1, f2, how='left', left_on=['airport_arr', 'year'], right_on=['airport_dep', 'year'])
+        all_flights_df = pd.merge(
+            arrivals_df, departures_df,
+            how='left',
+            left_on=['airport_arr', 'year'],
+            right_on=['airport_dep', 'year']
+        )
+
         # pogrupowanie lotnisk w unikalne pary
-        df = new_df.groupby(['airport_dep', 'airport_arr', 'year'])[['pessangers_dep', 'passengers']].sum()
+        unique_df = all_flights_df.groupby(['airport_dep', 'airport_arr', 'year'])[['pessangers_dep', 'passengers']].sum()
+
         # zsumowanie liczby pasażerów
-        df['pessangers_sum'] = df.apply(lambda row: row.pessangers_dep + row.passengers, axis=1)  # MD: bez lambda, po prostu sumujemy wektorowo
-        df = df.dropna(axis=1)
-        df = df.reset_index()
+        unique_df['pessangers_sum'] = unique_df.apply(lambda row: row.pessangers_dep + row.passengers, axis=1)  # MD: bez lambda, po prostu sumujemy wektorowo
+        unique_df = unique_df.dropna(axis=1)
+        unique_df = unique_df.reset_index()
 
         # przekształcenie ramki danych, żeby każda unikalna para była osobą kolumną
         # wypełnienie brakujących danych wartościami ostatniej dostępnej wartości
-        df = df.groupby(['airport_dep', 'airport_arr', 'year']).sum().unstack(['airport_dep', 'airport_arr']).fillna(
+        unique_df = unique_df.groupby(['airport_dep', 'airport_arr', 'year']).sum().unstack(['airport_dep', 'airport_arr']).fillna(
             method='ffill').reset_index()
+
         # wybór ostatniego roku
-        df = pd.DataFrame(df[df.year == 2015].pessangers_sum.unstack())  # MD: 2015 wpisane na sztywno do kodu
-        df = df.reset_index()
+        unique_df = pd.DataFrame(unique_df[unique_df.year == 2015].pessangers_sum.unstack())  # MD: 2015 wpisane na sztywno do kodu
+        unique_df = unique_df.reset_index()
+
         # odrzucenie zbędnych kolumn, zmiana nazw kolumn
-        df = df.drop(columns=['level_2', 'airport_arr'])
-        df = df.rename(columns={0: 'sum',
+        unique_df = unique_df.drop(columns=['level_2', 'airport_arr'])
+        unique_df = unique_df.rename(columns={0: 'sum',
                                 'airport_dep': 'airport_code'})
         # sortowanie malejąco
-        df = df.sort_values(by=['sum'], ascending=False)
+        unique_df = unique_df.sort_values(by=['sum'], ascending=False)
 
         # wizualizacja
         # MD: coś mi się te obliczenia nie zgtadzają, ale zależy jeszcze jak się traktuje NaN
-        ax = sns.barplot(data=df, x="airport_code", y="sum").set_title("Airports for {}".format(county_code))
+        ax = sns.barplot(data=unique_df, x="airport_code", y="sum").set_title("Airports for {}".format(county_code))
         plt.xlabel("Airport ICAO code")
         plt.ylabel("Passangers [thousands]")
         plt.savefig(plot_name)
@@ -137,7 +137,7 @@ def plot_country(county_code,
     plt.show()
 
 
-def plot_airport(airport_name, options={'partners', 'capacity', 'distance'}, plot_name='plot_airport.png'):
+def plot_airport(airport_name, options, plot_name='plot_airport.png'):
     """
     Umożliwia wizualizację danych dotyczących wybranego lotniska
     :param airport_name: Skrót lotniska (wg. ICAO)
@@ -165,6 +165,7 @@ def plot_airport(airport_name, options={'partners', 'capacity', 'distance'}, plo
         traffic_top10 = traffic.head(10)
 
         # wizualizacja
+        # TODO: sprawdzić czy ax się w ogóle kiedyś wyświetla
         ax = sns.barplot(data=traffic_top10, x="airport_arr", y="passengers_sum").set_title(
             "Largest partners of {}".format(airport_name))
         plt.xlabel("Destination airport")
@@ -263,13 +264,10 @@ def print_route(year, origin, destination):
     distance = round(calculate_distance(yo, xo, yd, xd))
 
     # wypisanie informacji o trasie
-    # MD: tutaj lepszy byłby f-string, albo formatowanie przez key-value - bo tak łatwo się pogubić
-    info_details = ("""Route information ({11}):\n\
-     Origin: {0} ({1}) airport in {2} ({3}),\n\
-     Destination: {4} {5} airport in {6} ({7})\n\
-     Distance: {8} km,\n\
-     Passangers: {9},\n\
-     Avaiable seats: {10}""").format(name_origin, origin, country_origin, country_origin_aberr,
-                                     name_destination, destination, country_destination, country_destination_aberr,
-                                     distance, traffic, seats, year)
+    info_details = (f"""Route information ({year}):
+                    Origin: {name_origin} ({origin}) airport in {country_origin} ({country_origin_aberr}),
+                    Destination: {name_destination} {destination} airport in {country_destination} ({country_destination_aberr}),
+                    Distance: {distance} km,
+                    Passangers: {traffic},
+                    Avaiable seats: {seats}""")
     return info_details

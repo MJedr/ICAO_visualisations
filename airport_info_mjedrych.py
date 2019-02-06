@@ -3,31 +3,27 @@ import sys
 import numpy as np
 import pandas as pd
 import glob
-import re
 import os
 from math import sin, cos, sqrt, atan2, radians
 
 # MD: lepsza struktura, ale ta funkcjonalność była i tak krótka...
-# MD: za to działa argparse - to dobrze
-# MD: momentami problemy ze składnią pythona
 
-def load_data(data_dir='.', detailed_data_folder =  r'simple_avia_par'):  # po co 'r'?
-    dataCodes = (os.path.join(data_dir,'airport-codes.csv'))
-    dataCountryCds = (os.path.join(data_dir,'country_codes.txt'))
-    airports = pd.read_csv(dataCodes)
-    ctry = pd.read_csv(dataCountryCds, sep=';')
+def load_data(data_dir='.', detailed_data_folder='simple_avia_par'):
+    data_codes = (os.path.join(data_dir,'airport-codes.csv'))
+    data_country_cds = (os.path.join(data_dir,'country_codes.txt'))
+    airports = pd.read_csv(data_codes)
+    country = pd.read_csv(data_country_cds, sep=';')
 
     path = (os.path.join(data_dir, detailed_data_folder))
-    allFiles = glob.glob(path + "/*.tsv")
+    all_files = glob.glob(path + "/*.tsv")
 
-    list_ = []
+    datasets = []
+    for f in all_files:
+        df = pd.read_csv(f, sep='\t')
+        df['year'] = (int(f.split('_')[-1][:-4]))  # bierzemy ostatni element nazwy i pozbawiamy go z rozszerzenia
+        datasets.append(df)
 
-    for file_ in allFiles:
-        df = pd.read_csv(file_, sep='\t')
-        df['year'] = (int(re.findall("[.0-9][.0-9][.0-9][.0-9]", file_)[0]))  # MD: 1) po co "."? Da się prościej...
-        list_.append(df)
-
-    frame = pd.concat(list_, axis=0, ignore_index=True)
+    frame = pd.concat(datasets, axis=0, ignore_index=True)
 
     # czyszczenie danych - podział na osobne kolumny
     # kolumna airport - departure
@@ -49,12 +45,14 @@ def load_data(data_dir='.', detailed_data_folder =  r'simple_avia_par'):  # po c
     frame["iso_code_arr"] = iso_code_arr
 
     # wyrzucenie zbędnych kolumn
-    frame = frame.drop(columns=['code_dep', "code_arr"])  # deleted 'seats' from list
+    frame = frame.drop(columns=['code_dep', 'code_arr'])  # deleted 'seats' from list
 
-    return airports, ctry, frame
+    return airports, country, frame
 
-# funckcja obliczająca odległości
+
 def calculate_distance(latt1, long1, latt2, long2):
+    """ Funkcja obliczcająca odległośc pomiędz dwoma punktami """
+
     R = 6373.0
 
     lat1 = radians(latt1)
@@ -70,7 +68,9 @@ def calculate_distance(latt1, long1, latt2, long2):
 
     return R * c
 
+
 def print_route(airports, country, airports_data, year, origin, destination):
+
     # pobór nazwy lotniska wylotu
     name_country_origin = airports[airports['ident'] == origin][['name', 'iso_country']]
     print(name_country_origin)
@@ -89,7 +89,6 @@ def print_route(airports, country, airports_data, year, origin, destination):
     country_destination = country_destination[0] + country_destination[1:].lower()
 
     # pobranie informacji o natężeniu ruchu i liczbie miejsc na trasie
-
     traffic_seats = airports_data[(airports_data.year == year) & (airports_data.airport_dep == origin) &
                                   (airports_data.airport_arr == destination)][['passengers', 'seats']]
     # jeżeli nie ma połączenia - zatrzymaj program
@@ -110,15 +109,12 @@ def print_route(airports, country, airports_data, year, origin, destination):
     distance = round(calculate_distance(yo, xo, yd, xd))
 
     # wypisanie informacji o trasie
-    # MD: tutaj lepszy byłby f-string, albo formatowanie przez key-value - bo tak łatwo się pogubić    
-    info_details = ("""Route information ({11}):\n\
-     Origin: {0} ({1}) airport in {2} ({3}),\n\
-     Destination: {4} {5} airport in {6} ({7})\n\
-     Distance: {8} km,\n\
-     Passangers: {9},\n\
-     Avaiable seats: {10}""").format(name_origin, origin, country_origin, country_origin_aberr,
-                                     name_destination, destination, country_destination, country_destination_aberr,
-                                     distance, traffic, seats, year)
+    info_details = (f"""Route information ({year}):
+                        Origin: {name_origin} ({origin}) airport in {country_origin} ({country_origin_aberr}),
+                        Destination: {name_destination} {destination} airport in {country_destination} ({country_destination_aberr}),
+                        Distance: {distance} km,
+                        Passangers: {traffic},
+                        Avaiable seats: {seats}""")
     return info_details
 
 
@@ -129,10 +125,6 @@ if __name__ == "__main__":
     parser.add_argument('airport_destination', help='Destination airport.', type = str)
     args = parser.parse_args()
 
-    # MD: nieeee! w ten sposób wczytujemy dane 3 razy! trzeba tak:
-    # MD: airports, countries, airport_details = load_data()
-    airports = load_data()[0]
-    countries = load_data()[1]
-    airports_details = load_data()[2]    
+    airports, countries, airports_details = load_data()
     info = print_route(airports, countries, airports_details, args.year, args.airport_origin, args.airport_destination)
     print(info)
