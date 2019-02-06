@@ -13,46 +13,42 @@ from math import sin, cos, sqrt, atan2, radians
 # MD: kod działa i jest ok w skali "mikro", ale struktura średnia - długie funkcje robiące kilka rzeczy na raz
 
 
-# wczytywanie danych
-dataCodes = 'airport-codes.csv'
-dataCountryCds = 'country_codes.txt'
-airports = pd.read_csv(dataCodes)
-ctry = pd.read_csv(dataCountryCds, sep=';')
+def load_data(data_dir='.', detailed_data_folder='simple_avia_par'):
+    data_codes = (os.path.join(data_dir, 'airport-codes.csv'))
+    data_country_cds = (os.path.join(data_dir, 'country_codes.txt'))
+    airports = pd.read_csv(data_codes)
+    country = pd.read_csv(data_country_cds, sep=';')
 
-# wczytywanie danych z katalogu
-path = r'simple_avia_par'  # po co r?
-allFiles = glob.glob(path + "/*.tsv")
+    path = (os.path.join(data_dir, detailed_data_folder))
+    all_files = glob.glob(path + "/*.tsv")
 
-list_ = []
+    datasets = []
+    for f in all_files:
+        df = pd.read_csv(f, sep='\t')
+        df['year'] = (int(f.split('_')[-1][:-4]))  # bierzemy ostatni element nazwy i pozbawiamy go z rozszerzenia
+        datasets.append(df)
 
-for file_ in allFiles:
-    df = pd.read_csv(file_, sep='\t')
-    df['year'] = (int(f.split('_')[-1][:-4]))  # bierzemy ostatni element nazwy i pozbawiamy go z rozszerzenia
-    list_.append(df)
+    frame = pd.concat(datasets, axis=0, ignore_index=True)
 
-frame = pd.concat(list_, axis=0, ignore_index=True)
+    # czyszczenie danych - podział na osobne kolumny
+    # kolumna airport - departure
+    frame['airport_dep'] = frame.code_dep.str.split('_').str.get(1)
 
-# czyszczenie danych - podział na osobne kolumny
-# kolumna airport - departure
-airport_dep = frame.code_dep.str.split('_').str.get(1)
+    # kolumna z kodem iso dla lotniska odlotu
+    frame['iso_code_dep'] = frame.code_dep.str.split('_').str.get(0)
 
-# kolumna z kodem iso dla lotniska odlotu
-iso_code_dep = frame.code_dep.str.split('_').str.get(0)
+    # kolumna airport_arr
+    frame['airport_arr'] = frame.code_arr.str.split('_').str.get(1)
 
-# kolumna airport_arr
-airport_arr = frame.code_arr.str.split('_').str.get(1)
+    # kolumna z kodem iso dla lotniska docelowego
+    frame['iso_code_arr'] = frame.code_arr.str.split('_').str.get(0)
 
-# kolumna z kodem iso dla lotniska docelowego
-iso_code_arr = frame.code_arr.str.split('_').str.get(0)
+    # wyrzucenie zbędnych kolumn
+    frame = frame.drop(columns=['code_dep', 'code_arr'])
 
-# dołączenie utworzonych kolumn do ramki danych
-frame["airport_dep"] = airport_dep
-frame["iso_code_dep"] = iso_code_dep
-frame["airport_arr"] = airport_arr
-frame["iso_code_arr"] = iso_code_arr
+    frame.seats.replace(":", np.nan, inplace=True)
 
-# wyrzucenie zbędnych kolumn
-frame = frame.drop(columns=['code_dep', "code_arr"])  # deleted 'seats' from list
+    return airports, country, frame
 
 
 # funckcja obliczająca odległości
@@ -73,65 +69,40 @@ def calculate_distance(latt1, long1, latt2, long2):
     return R * c
 
 
-def plot_country(county_code, option, plot_name='traffic_plot.png'):
-    if option == 'airport':
-        arrivals_df = frame[(frame.iso_code_dep == county_code) & (frame.iso_code_arr == county_code)][
-            ['passengers', 'airport_arr', 'year']]
-        departures_df = frame[(frame.iso_code_dep == county_code) & (frame.iso_code_arr == county_code)][
-            ['passengers', 'airport_dep', 'year']]
-        # zmiana nazwy kolumny - zapobieganie duplikowaniu kolumny
-        departures_df = departures_df.rename(columns={'passengers': 'pessangers_dep'})
+def plot_country_airport(county_code, option, plot_name='traffic_plot.png'):
+    airports, country, frame = load_data()
 
-        all_flights_df = pd.merge(
-            arrivals_df, departures_df,
-            how='left',
-            left_on=['airport_arr', 'year'],
-            right_on=['airport_dep', 'year']
-        )
+    arrivals = frame[frame.iso_code_arr == county_code].groupby(['year', 'airport_arr']).sum().unstack()
+    departures = frame[frame.iso_code_dep == county_code].groupby(['year', 'airport_dep']).sum().unstack()
 
-        # pogrupowanie lotnisk w unikalne pary
-        unique_df = all_flights_df.groupby(['airport_dep', 'airport_arr', 'year'])[['pessangers_dep', 'passengers']].sum()
+    last_year_arrivals = arrivals.apply(lambda x: x[x.notnull()].values[-1]).rename("arrivals")
+    last_year_departures = departures.apply(lambda x: x[x.notnull()].values[-1]).rename("departures")
 
-        # zsumowanie liczby pasażerów
-        unique_df['pessangers_sum'] = unique_df.apply(lambda row: row.pessangers_dep + row.passengers, axis=1)  # MD: bez lambda, po prostu sumujemy wektorowo
-        unique_df = unique_df.dropna(axis=1)
-        unique_df = unique_df.reset_index()
+    last_year_traffic = pd.concat([last_year_arrivals, last_year_departures], axis=1, join='inner')
 
-        # przekształcenie ramki danych, żeby każda unikalna para była osobą kolumną
-        # wypełnienie brakujących danych wartościami ostatniej dostępnej wartości
-        unique_df = unique_df.groupby(['airport_dep', 'airport_arr', 'year']).sum().unstack(['airport_dep', 'airport_arr']).fillna(
-            method='ffill').reset_index()
+    last_year_traffic["sum"] = last_year_traffic.sum(axis=1)
+    last_year_traffic.index = last_year_traffic.index.set_names(['variable', 'airport_code'])
+    last_year_traffic = last_year_traffic.reset_index().sort_values(by=['sum'], ascending=False)
 
-        # wybór ostatniego roku
-        unique_df = pd.DataFrame(unique_df[unique_df.year == 2015].pessangers_sum.unstack())  # MD: 2015 wpisane na sztywno do kodu
-        unique_df = unique_df.reset_index()
+    # wizualizacja
+    ax = sns.barplot(data=last_year_traffic, x="airport_code", y="sum").set_title("Airports for {}".format(county_code))
+    plt.xlabel("Airport ICAO code")
+    plt.ylabel("Passangers [thousands]")
+    plt.savefig(plot_name)
+    plt.show()
 
-        # odrzucenie zbędnych kolumn, zmiana nazw kolumn
-        unique_df = unique_df.drop(columns=['level_2', 'airport_arr'])
-        unique_df = unique_df.rename(columns={0: 'sum',
-                                'airport_dep': 'airport_code'})
-        # sortowanie malejąco
-        unique_df = unique_df.sort_values(by=['sum'], ascending=False)
 
-        # wizualizacja
-        # MD: coś mi się te obliczenia nie zgtadzają, ale zależy jeszcze jak się traktuje NaN
-        ax = sns.barplot(data=unique_df, x="airport_code", y="sum").set_title("Airports for {}".format(county_code))
-        plt.xlabel("Airport ICAO code")
-        plt.ylabel("Passangers [thousands]")
-        plt.savefig(plot_name)
-        plt.show()
+def plot_country_traffic(county_code, plot_name='traffic_plot.png'):
+    airports, country, frame = load_data()
 
-    elif option == 'traffic':
-        # wybór danych
-        f = frame[(frame.iso_code_dep == county_code)][['passengers', 'airport_dep', 'year']]
-        # tabela przestawna z danymi dla każdego roku i każdego lotniska w wybranym kraju
-        f = pd.pivot_table(f, index=['airport_dep', 'year'], values='passengers',
-                           aggfunc=np.sum)
-        f = f.reset_index()
+    selected_data = frame[(frame.iso_code_dep == county_code)][['passengers', 'airport_dep', 'year']]
+    selected_data_pivot = pd.pivot_table(selected_data, index=['airport_dep', 'year'], values='passengers',
+                       aggfunc=np.sum)
+    selected_data_pivot = selected_data_pivot.reset_index()
 
-        # wizualizacja
-        ax = sns.lineplot(data=f, x='year', hue='airport_dep', y='passengers')
-        ax.get_legend().texts[0].set_text('Airport')
+    # wizualizacja
+    ax = sns.lineplot(data=selected_data_pivot, x='year', hue='airport_dep', y='passengers')
+    ax.get_legend().texts[0].set_text('Airport')
 
     plt.savefig(plot_name)
     plt.show()
@@ -146,6 +117,7 @@ def plot_airport(airport_name, options, plot_name='plot_airport.png'):
     :param plot_name: nazwa pliku wyjściowego dla wykresu
     :return:
     """
+    airports, country, frame = load_data()
     if options == 'partners':
         # ramka z odlotami z lotniska
         departures =frame[(frame.airport_dep == airport_name) & (frame.year == 2015)][['airport_arr', 'passengers']]
@@ -160,9 +132,9 @@ def plot_airport(airport_name, options, plot_name='plot_airport.png'):
         # policzenie sumy pasażerów przylatujących i odlatujących dla każdego lotniska
         traffic['passengers_sum'] = traffic.apply(lambda row: row.passengers_to + row.passengers_from, axis=1)
         # posortowanie ramki danych malejąco
-        traffic = traffic.sort_values(by=['passengers_sum'], ascending=False)
+        traffic_sorted = traffic.sort_values(by=['passengers_sum'], ascending=False)
         # wybór największych partnerów
-        traffic_top10 = traffic.head(10)
+        traffic_top10 = traffic_sorted.head(10)
 
         # wizualizacja
         # TODO: sprawdzić czy ax się w ogóle kiedyś wyświetla
@@ -175,18 +147,16 @@ def plot_airport(airport_name, options, plot_name='plot_airport.png'):
 
     elif options == 'capacity':
         # wybór lotniska
-        selection = frame[(frame.airport_dep == airport_name)]
-        # usunięcie obserwacji z brakiem danych
-        selection = selection.loc[(selection['seats'] != ":")]   # MD: można by to załatwić na etapie read_csv (na_values=':')
+        selected_data = frame[(frame.airport_dep == airport_name)]
         # sprawdzenie ostatniego dostępnego roku
-        last_year = max(selection.year)
+        last_year = max(selected_data.year)
         # zmiana typu kolumny
-        selection.seats = selection.seats.astype("float16")
+        selected_data.seats = selected_data.seats.astype("float16")
         # wybór danych dla ostatniego dostępnego roku
-        selection = selection[(selection.year == last_year)]
+        selected_data_year = selected_data[(selected_data.year == last_year)]
 
         # wizualizacja
-        ax = sns.regplot(data=selection, y='passengers', x='seats')
+        ax = sns.regplot(data=selected_data_year, y='passengers', x='seats')
         ax.set_title("Passangers vs. capacity for {}".format(airport_name))
         ax.set_xlabel("Passangers [thousands]")
         ax.set_ylabel("Avaiable seats [thousands]")
@@ -225,14 +195,14 @@ def plot_airport(airport_name, options, plot_name='plot_airport.png'):
         plt.show()
 
 
-
 def print_route(year, origin, destination):
+    airports, country, frame = load_data()
     # pobór nazwy lotniska wylotu
     name_country_origin = airports[airports.ident == origin][['name', 'iso_country']]
     name_origin = airports.at[name_country_origin.index[0], "name"]
     # pobór nazwy państwa wylotu
     country_origin_aberr = airports.at[name_country_origin.index[0], 'iso_country']
-    country_origin = ctry[ctry.iso_country == country_origin_aberr]['country'].values[0]
+    country_origin = country[country.iso_country == country_origin_aberr]['country'].values[0]
     country_origin = country_origin[0] + country_origin[1:].lower()
 
     # pobór nazwy lotniska docelowego
@@ -240,7 +210,7 @@ def print_route(year, origin, destination):
     name_destination = airports.at[name_country_destination.index[0], "name"]
     # pobór nazwy państwa docelowego
     country_destination_aberr = airports.at[name_country_destination.index[0], 'iso_country']
-    country_destination = ctry[ctry.iso_country == country_destination_aberr]['country'].values[0]
+    country_destination = country[country.iso_country == country_destination_aberr]['country'].values[0]
     country_destination = country_destination[0] + country_destination[1:].lower()
 
     # pobranie informacji o natężeniu ruchu i liczbie miejsc na trasie
