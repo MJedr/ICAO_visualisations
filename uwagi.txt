@@ -1,0 +1,6 @@
+Nie wiedzia³em jaki jest Twój pomys³ na oddanie tego zadania (która forma itp.), wiêc sprawdza³em i ocenia³em wszystko.
+Pod uwagê brane by³o poprawne dzia³anie (+bonusy za inicjatweœ i ciekawe rozwi¹zania), zgodnoœæ z za³o¿êniami, styl i czytelnosæ kodu, oraz struktura programu. 
+Twój kod dzia³a (poza 1 pkt), ale ma sporo tych problemów, dlatego za da³em 1/3 pkt. S¹ te¿ problemy na poziomie kodu pythona, To siê tyczy obu czêœci. Faktycznie, czêœæ skryptowa jest trochê lepsza, Co wiêcej, obie czêœci korzystaj¹ z tego samego kodu wczytuj¹cego, zamiast wspó³dzieliæ go w jakiœ sposób - jak ju¿ tworzymy 2 pliki...
+W zadaniu trzeba by³o wybraæ któr¹œ z wersji - zrobienie wiêcej podpunktów extra do pewnego stopnia kompensuje, ale s¹ granice...
+
+Mo¿emy zrobiæ tak: je¿eli poprawisz kod z plot_country zgodnie z moimi wytycznymi (w tym podzia³ na 2 funkcje, ka¿da realizuj¹ca inn¹ opcjê), to mogê podnieœæ do 2/3, co powinno da ocenê 4.
