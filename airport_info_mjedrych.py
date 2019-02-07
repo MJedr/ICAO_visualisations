@@ -125,6 +125,5 @@ if __name__ == "__main__":
     parser.add_argument('airport_destination', help='Destination airport.', type = str)
     args = parser.parse_args()
 
-    airports, countries, airports_details = load_data()
-    info = print_route(airports, countries, airports_details, args.year, args.airport_origin, args.airport_destination)
+    info = print_route(args.year, args.airport_origin, args.airport_destination)
     print(info)
