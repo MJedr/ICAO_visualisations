@@ -41,7 +41,7 @@ Thumbs.db
 __pycache__/
 # ipynb
 .ipynb_checkpoints/
-.ipynb*
+.ipynb
 
 #other files
 uwagi.txt
