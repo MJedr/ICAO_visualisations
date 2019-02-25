@@ -41,3 +41,8 @@ Thumbs.db
 __pycache__/
 # ipynb
 .ipynb_checkpoints/
+.ipynb*
+
+#other files
+uwagi.txt
+*.pdf

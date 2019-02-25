@@ -11,7 +11,6 @@ from math import sin, cos, sqrt, atan2, radians
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
-
 def load_data(data_dir=dir_path, detailed_data_folder='simple_avia_par'):
     data_codes = (os.path.join(data_dir, 'airport-codes.csv'))
     data_country_cds = (os.path.join(data_dir, 'country_codes.txt'))
@@ -123,7 +122,7 @@ def plot_airport_capacity(airport_name, plot_name='plot_airport.png'):
     selected_data = frame[(frame.airport_dep == airport_name)]
     last_year = max(selected_data.year)
     selected_data.seats = selected_data.seats.astype("float16")
-    selected_data_year = selected_data[(selected_data.year == last_year)]
+    selected_data_year = selected_data.loc[(selected_data.year == last_year)]
 
     # wizualizacja
     ax = sns.regplot(data=selected_data_year, y='passengers', x='seats')
@@ -137,10 +136,10 @@ def plot_airport_capacity(airport_name, plot_name='plot_airport.png'):
 def plot_airport_distance(airport_name, plot_name='plot_airport.png'):
     airports, country, frame = load_data()
     departures = frame[(frame.airport_dep == airport_name)]
-    departures = departures[departures.year == max(departures.year)][['airport_arr', 'passengers']]
+    departures = departures[(departures.year == max(departures.year))][['airport_arr', 'passengers']]
     airports_coords = airports[['ident', 'latitude_deg', 'longitude_deg']]
 
-    coordsChosen = airports[airports.ident == airport_name][['latitude_deg', 'longitude_deg']]
+    coordsChosen = airports[(airports.ident == airport_name)][['latitude_deg', 'longitude_deg']]
     y = coordsChosen.iloc[0]['latitude_deg']
     x = coordsChosen.iloc[0]['longitude_deg']
 
@@ -208,5 +207,3 @@ if __name__ == "__main__":
 
     info = print_route(args.year, args.airport_origin, args.airport_destination)
     print(info)
-
-
